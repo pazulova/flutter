@@ -28,7 +28,7 @@ typedef DataColumnSortCallback = void Function(int columnIndex, bool ascending);
 ///
 /// One column configuration must be provided for each column to
 /// display in the table. The list of [DataColumn] objects is passed
-/// as the `columns` argument to the [new DataTable] constructor.
+/// as the `columns` argument to the [DataTable.new] constructor.
 @immutable
 class DataColumn {
   /// Creates the configuration for a column of a [DataTable].
@@ -81,7 +81,7 @@ class DataColumn {
 ///
 /// One row configuration must be provided for each row to
 /// display in the table. The list of [DataRow] objects is passed
-/// as the `rows` argument to the [new DataTable] constructor.
+/// as the `rows` argument to the [DataTable.new] constructor.
 ///
 /// The data for this row of the table is provided in the [cells]
 /// property of the [DataRow] object.
@@ -701,9 +701,6 @@ class DataTable extends StatelessWidget {
         ),
         child: Center(
           child: Checkbox(
-            // TODO(per): Remove when Checkbox has theme, https://github.com/flutter/flutter/issues/53420.
-            activeColor: themeData.colorScheme.primary,
-            checkColor: themeData.colorScheme.onPrimary,
             value: checked,
             onChanged: onCheckboxChanged,
             tristate: tristate,
@@ -1142,6 +1139,7 @@ class _SortArrowState extends State<_SortArrow> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    _up = widget.up;
     _opacityAnimation = CurvedAnimation(
       parent: _opacityController = AnimationController(
         duration: widget.duration,

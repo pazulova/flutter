@@ -76,6 +76,7 @@ final List<GradleHandledError> gradleErrors = <GradleHandledError>[
   lockFileDepMissing,
   multidexErrorHandler,
   incompatibleKotlinVersionHandler,
+  minCompileSdkVersionHandler,
 ];
 
 const String _boxTitle = 'Flutter Fix';
@@ -166,7 +167,7 @@ final GradleHandledError multidexErrorHandler = GradleHandledError(
       }
     } else {
       globals.printBox(
-        'Flutter multidex handling is disabled. If you wish to let the tool configure multidex, use the --mutidex flag.',
+        'Flutter multidex handling is disabled. If you wish to let the tool configure multidex, use the --multidex flag.',
         title: _boxTitle,
       );
     }
@@ -225,8 +226,8 @@ final GradleHandledError networkErrorHandler = GradleHandledError(
     required bool multidexEnabled,
   }) async {
     globals.printError(
-      '${globals.logger.terminal.warningMark} Gradle threw an error while downloading artifacts from the network. '
-      'Retrying to download...'
+      '${globals.logger.terminal.warningMark} '
+      'Gradle threw an error while downloading artifacts from the network.'
     );
     try {
       final String? homeDir = globals.platform.environment['HOME'];
@@ -409,7 +410,8 @@ final GradleHandledError minSdkVersion = GradleHandledError(
       'The plugin ${minSdkVersionMatch?.group(3)} requires a higher Android SDK version.\n'
       '$textInBold\n'
       "Note that your app won't be available to users running Android SDKs below ${minSdkVersionMatch?.group(2)}.\n"
-      'Alternatively, try to find a version of this plugin that supports these lower versions of the Android SDK.',
+      'Alternatively, try to find a version of this plugin that supports these lower versions of the Android SDK.\n'
+      'For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-build-configuration',
       title: _boxTitle,
     );
     return GradleBuildStatus.exit;
@@ -504,4 +506,35 @@ final GradleHandledError incompatibleKotlinVersionHandler = GradleHandledError(
     return GradleBuildStatus.exit;
   },
   eventLabel: 'incompatible-kotlin-version',
+);
+
+final RegExp _minCompileSdkVersionPattern = RegExp(r'The minCompileSdk \(([0-9]+)\) specified in a');
+
+@visibleForTesting
+final GradleHandledError minCompileSdkVersionHandler = GradleHandledError(
+  test: _minCompileSdkVersionPattern.hasMatch,
+  handler: ({
+    required String line,
+    required FlutterProject project,
+    required bool usesAndroidX,
+    required bool multidexEnabled,
+  }) async {
+    final Match? minCompileSdkVersionMatch = _minCompileSdkVersionPattern.firstMatch(line);
+    assert(minCompileSdkVersionMatch?.groupCount == 1);
+
+    final File gradleFile = project.directory
+        .childDirectory('android')
+        .childDirectory('app')
+        .childFile('build.gradle');
+    globals.printBox(
+      '${globals.logger.terminal.warningMark} Your project requires a higher compileSdkVersion.\n'
+      'Fix this issue by bumping the compileSdkVersion in ${gradleFile.path}:\n'
+      'android {\n'
+      '  compileSdkVersion ${minCompileSdkVersionMatch?.group(1)}\n'
+      '}',
+      title: _boxTitle,
+    );
+    return GradleBuildStatus.exit;
+  },
+  eventLabel: 'min-compile-sdk-version',
 );

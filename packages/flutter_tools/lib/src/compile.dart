@@ -167,17 +167,22 @@ List<String> buildModeOptions(BuildMode mode, List<String> dartDefines) {
   switch (mode) {
     case BuildMode.debug:
       return <String>[
-        '-Ddart.vm.profile=false',
-        // This allows the CLI to override the value of this define for unit
+        // These checks allow the CLI to override the value of this define for unit
         // testing the framework.
+        if (!dartDefines.any((String define) => define.startsWith('dart.vm.profile')))
+          '-Ddart.vm.profile=false',
         if (!dartDefines.any((String define) => define.startsWith('dart.vm.product')))
           '-Ddart.vm.product=false',
         '--enable-asserts',
       ];
     case BuildMode.profile:
       return <String>[
-        '-Ddart.vm.profile=true',
-        '-Ddart.vm.product=false',
+        // These checks allow the CLI to override the value of this define for
+        // benchmarks with most timeline traces disabled.
+        if (!dartDefines.any((String define) => define.startsWith('dart.vm.profile')))
+          '-Ddart.vm.profile=true',
+        if (!dartDefines.any((String define) => define.startsWith('dart.vm.product')))
+          '-Ddart.vm.product=false',
       ];
     case BuildMode.release:
       return <String>[
@@ -442,6 +447,7 @@ abstract class ResidentCompiler {
     List<String> fileSystemRoots,
     String? fileSystemScheme,
     String initializeFromDill,
+    bool assumeInitializeFromDillUpToDate,
     TargetModel targetModel,
     bool unsafePackageSerialization,
     List<String> extraFrontEndOptions,
@@ -550,6 +556,7 @@ class DefaultResidentCompiler implements ResidentCompiler {
     List<String> fileSystemRoots = const <String>[],
     this.fileSystemScheme,
     this.initializeFromDill,
+    this.assumeInitializeFromDillUpToDate = false,
     this.targetModel = TargetModel.flutter,
     this.unsafePackageSerialization = false,
     this.extraFrontEndOptions,
@@ -582,6 +589,7 @@ class DefaultResidentCompiler implements ResidentCompiler {
   final List<String> fileSystemRoots;
   final String? fileSystemScheme;
   final String? initializeFromDill;
+  final bool assumeInitializeFromDillUpToDate;
   final bool unsafePackageSerialization;
   final List<String>? extraFrontEndOptions;
   final List<String> dartDefines;
@@ -751,6 +759,7 @@ class DefaultResidentCompiler implements ResidentCompiler {
         '--initialize-from-dill',
         initializeFromDill!,
       ],
+      if (assumeInitializeFromDillUpToDate) '--assume-initialize-from-dill-up-to-date',
       if (platformDill != null) ...<String>[
         '--platform',
         platformDill!,

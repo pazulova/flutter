@@ -215,6 +215,15 @@ TaskFunction createPictureCachePerfE2ETest() {
   ).run;
 }
 
+TaskFunction createPictureCacheComplexityScoringPerfTest() {
+  return PerfTest(
+    '${flutterDirectory.path}/dev/benchmarks/macrobenchmarks',
+    'test_driver/run_app.dart',
+    'picture_cache_complexity_scoring_perf',
+    testDriver: 'test_driver/picture_cache_complexity_scoring_perf_test.dart',
+  ).run;
+}
+
 TaskFunction createFlutterGalleryStartupTest({String target = 'lib/main.dart'}) {
   return StartupTest(
     '${flutterDirectory.path}/dev/integration_tests/flutter_gallery',
@@ -359,6 +368,13 @@ TaskFunction createColorFilterAndFadePerfE2ETest() {
   return PerfTest.e2e(
     '${flutterDirectory.path}/dev/benchmarks/macrobenchmarks',
     'test/color_filter_and_fade_perf_e2e.dart',
+  ).run;
+}
+
+TaskFunction createColorFilterCachePerfE2ETest() {
+  return PerfTest.e2e(
+    '${flutterDirectory.path}/dev/benchmarks/macrobenchmarks',
+    'test/color_filter_cache_perf_e2e.dart',
   ).run;
 }
 
@@ -519,6 +535,20 @@ TaskFunction createOpacityPeepholeFadeTransitionTextPerfE2ETest() {
   ).run;
 }
 
+TaskFunction createOpacityPeepholeGridOfAlphaSaveLayersPerfE2ETest() {
+  return PerfTest.e2e(
+    '${flutterDirectory.path}/dev/benchmarks/macrobenchmarks',
+    'test/opacity_peephole_grid_of_alpha_savelayers_perf_e2e.dart',
+  ).run;
+}
+
+TaskFunction createOpacityPeepholeColOfAlphaSaveLayerRowsPerfE2ETest() {
+  return PerfTest.e2e(
+    '${flutterDirectory.path}/dev/benchmarks/macrobenchmarks',
+    'test/opacity_peephole_col_of_alpha_savelayer_rows_perf_e2e.dart',
+  ).run;
+}
+
 Map<String, dynamic> _average(List<Map<String, dynamic>> results, int iterations) {
   final Map<String, dynamic> tally = <String, dynamic>{};
   for (final Map<String, dynamic> item in results) {
@@ -592,6 +622,7 @@ class StartupTest {
           ]);
           applicationBinaryPath = _findIosAppInBuildDirectory('$testDirectory/build/ios/iphoneos');
           break;
+        case DeviceOperatingSystem.windows:
         case DeviceOperatingSystem.fuchsia:
         case DeviceOperatingSystem.fake:
           break;
@@ -707,6 +738,7 @@ class DevtoolsStartupTest {
           ]);
           applicationBinaryPath = _findIosAppInBuildDirectory('$testDirectory/build/ios/iphoneos');
           break;
+        case DeviceOperatingSystem.windows:
         case DeviceOperatingSystem.fuchsia:
         case DeviceOperatingSystem.fake:
           break;
@@ -759,6 +791,11 @@ class DevtoolsStartupTest {
   }
 }
 
+/// A callback function to be used to mock the flutter drive command in PerfTests.
+///
+/// The `options` contains all the arguments in the `flutter drive` command in PerfTests.
+typedef FlutterDriveCallback = void Function(List<String> options);
+
 /// Measures application runtime performance, specifically per-frame
 /// performance.
 class PerfTest {
@@ -774,6 +811,8 @@ class PerfTest {
     this.benchmarkScoreKeys,
     this.dartDefine = '',
     String? resultFilename,
+    this.device,
+    this.flutterDriveCallback,
   }): _resultFilename = resultFilename;
 
   const PerfTest.e2e(
@@ -786,6 +825,8 @@ class PerfTest {
     this.benchmarkScoreKeys = _kCommonScoreKeys,
     this.dartDefine = '',
     String resultFilename = 'e2e_perf_summary',
+    this.device,
+    this.flutterDriveCallback,
   }) : saveTraceFile = false, timelineFileName = null, _resultFilename = resultFilename;
 
   /// The directory where the app under test is defined.
@@ -807,6 +848,15 @@ class PerfTest {
   final bool needsFullTimeline;
   /// Whether to save the trace timeline file `*.timeline.json`.
   final bool saveTraceFile;
+  /// The device to test on.
+  ///
+  /// If null, the device is selected depending on the current environment.
+  final Device? device;
+
+  /// The function called instead of the actually `flutter drive`.
+  ///
+  /// If it is not `null`, `flutter drive` will not happen in the PerfTests.
+  final FlutterDriveCallback? flutterDriveCallback;
 
   /// The keys of the values that need to be reported.
   ///
@@ -844,15 +894,22 @@ class PerfTest {
       String? writeSkslFileName,
   }) {
     return inDirectory<TaskResult>(testDirectory, () async {
-      final Device device = await devices.workingDevice;
-      await device.unlock();
-      final String deviceId = device.deviceId;
+      late Device selectedDevice;
+      if (device != null) {
+        selectedDevice = device!;
+      } else {
+        selectedDevice = await devices.workingDevice;
+      }
+      await selectedDevice.unlock();
+      final String deviceId = selectedDevice.deviceId;
+      final String? localEngine = localEngineFromEnv;
+      final String? localEngineSrcPath = localEngineSrcPathFromEnv;
 
-      await flutter('drive', options: <String>[
+      final List<String> options = <String>[
         if (localEngine != null)
-          ...<String>['--local-engine', localEngine!],
+          ...<String>['--local-engine', localEngine],
         if (localEngineSrcPath != null)
-          ...<String>['--local-engine-src-path', localEngineSrcPath!],
+          ...<String>['--local-engine-src-path', localEngineSrcPath],
         '--no-dds',
         '--no-android-gradle-daemon',
         '-v',
@@ -872,7 +929,12 @@ class PerfTest {
           ...<String>['--dart-define', dartDefine],
         '-d',
         deviceId,
-      ]);
+      ];
+      if (flutterDriveCallback != null) {
+        flutterDriveCallback!(options);
+      } else {
+        await flutter('drive', options:options);
+      }
       final Map<String, dynamic> data = json.decode(
         file('${_testOutputDirectory(testDirectory)}/$resultFilename.json').readAsStringSync(),
       ) as Map<String, dynamic>;
@@ -909,6 +971,12 @@ class PerfTest {
             if (data['90th_percentile_memory_usage'] != null) '90th_percentile_memory_usage',
             if (data['99th_percentile_memory_usage'] != null) '99th_percentile_memory_usage',
           ],
+          if (data['30hz_frame_percentage'] != null) '30hz_frame_percentage',
+          if (data['60hz_frame_percentage'] != null) '60hz_frame_percentage',
+          if (data['80hz_frame_percentage'] != null) '80hz_frame_percentage',
+          if (data['90hz_frame_percentage'] != null) '90hz_frame_percentage',
+          if (data['120hz_frame_percentage'] != null) '120hz_frame_percentage',
+          if (data['illegal_refresh_rate_frame_count'] != null) 'illegal_refresh_rate_frame_count',
         ],
       );
     });
@@ -1028,15 +1096,16 @@ class PerfTestWithSkSL extends PerfTest {
     if (File(_vmserviceFileName).existsSync()) {
       File(_vmserviceFileName).deleteSync();
     }
-
+    final String? localEngine = localEngineFromEnv;
+    final String? localEngineSrcPath = localEngineSrcPathFromEnv;
     _runProcess = await startProcess(
       _flutterPath,
       <String>[
         'run',
         if (localEngine != null)
-          ...<String>['--local-engine', localEngine!],
+          ...<String>['--local-engine', localEngine],
         if (localEngineSrcPath != null)
-          ...<String>['--local-engine-src-path', localEngineSrcPath!],
+          ...<String>['--local-engine-src-path', localEngineSrcPath],
         '--no-dds',
         if (deviceOperatingSystem == DeviceOperatingSystem.ios)
           ...<String>[
@@ -1281,6 +1350,8 @@ class CompileTest {
         if (reportPackageContentSizes)
           metrics.addAll(await getSizesFromApk(apkPath));
         break;
+      case DeviceOperatingSystem.windows:
+        throw Exception('Unsupported option for Windows devices');
       case DeviceOperatingSystem.fuchsia:
         throw Exception('Unsupported option for Fuchsia devices');
       case DeviceOperatingSystem.fake:
@@ -1317,6 +1388,8 @@ class CompileTest {
         options.insert(0, 'apk');
         options.add('--target-platform=android-arm64');
         break;
+      case DeviceOperatingSystem.windows:
+        throw Exception('Unsupported option for Windows devices');
       case DeviceOperatingSystem.fuchsia:
         throw Exception('Unsupported option for Fuchsia devices');
       case DeviceOperatingSystem.fake:

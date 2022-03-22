@@ -83,11 +83,76 @@ class FlutterDebugAdapter extends DartDebugAdapter<FlutterLaunchRequestArguments
   @override
   bool get terminateOnVmServiceClose => false;
 
+  /// Whether or not the user requested debugging be enabled.
+  ///
+  /// For debugging to be enabled, the user must have chosen "Debug" (and not
+  /// "Run") in the editor (which maps to the DAP `noDebug` field) _and_ must
+  /// not have requested to run in Profile or Release mode. Profile/Release
+  /// modes will always disable debugging.
+  ///
+  /// This is always `true` for attach requests.
+  ///
+  /// When not debugging, we will not connect to the VM Service so some
+  /// functionality (breakpoints, evaluation, etc.) will not be available.
+  /// Functionality provided via the daemon (hot reload/restart) will still be
+  /// available.
+  bool get enableDebugger {
+    final DartCommonLaunchAttachRequestArguments args = this.args;
+    if (args is FlutterLaunchRequestArguments) {
+      // Invert DAP's noDebug flag, treating it as false (so _do_ debug) if not
+      // provided.
+      return !(args.noDebug ?? false) && !profileMode && !releaseMode;
+    }
+
+    // Otherwise (attach), always debug.
+    return true;
+  }
+
+  /// Whether the launch configuration arguments specify `--profile`.
+  ///
+  /// Always `false` for attach requests.
+  bool get profileMode {
+    final DartCommonLaunchAttachRequestArguments args = this.args;
+    if (args is FlutterLaunchRequestArguments) {
+      return args.toolArgs?.contains('--profile') ?? false;
+    }
+
+    // Otherwise (attach), always false.
+    return false;
+  }
+
+  /// Whether the launch configuration arguments specify `--release`.
+  ///
+  /// Always `false` for attach requests.
+  bool get releaseMode {
+    final DartCommonLaunchAttachRequestArguments args = this.args;
+    if (args is FlutterLaunchRequestArguments) {
+      return args.toolArgs?.contains('--release') ?? false;
+    }
+
+    // Otherwise (attach), always false.
+    return false;
+  }
+
   /// Called by [attachRequest] to request that we actually connect to the app to be debugged.
   @override
   Future<void> attachImpl() async {
-    sendOutput('console', '\nAttach is not currently supported');
-    handleSessionTerminate();
+    final FlutterAttachRequestArguments args = this.args as FlutterAttachRequestArguments;
+
+    final String? vmServiceUri = args.vmServiceUri;
+    final List<String> toolArgs = <String>[
+      'attach',
+      '--machine',
+      if (vmServiceUri != null)
+      ...<String>['--debug-uri', vmServiceUri],
+    ];
+
+    await _startProcess(
+      toolArgs: toolArgs,
+      customTool: args.customTool,
+      customToolReplacesArgs: args.customToolReplacesArgs,
+      userToolArgs: args.toolArgs,
+    );
   }
 
   /// [customRequest] handles any messages that do not match standard messages in the spec.
@@ -158,9 +223,27 @@ class FlutterDebugAdapter extends DartDebugAdapter<FlutterLaunchRequestArguments
           case 'Flutter.ServiceExtensionStateChanged':
             _sendServiceExtensionStateChanged(event.extensionData);
             break;
+          case 'Flutter.Error':
+            _handleFlutterErrorEvent(event.extensionData);
+            break;
         }
         break;
     }
+  }
+
+  /// Sends OutputEvents to the client for a Flutter.Error event.
+  void _handleFlutterErrorEvent(vm.ExtensionData? data) {
+    final Map<String, dynamic>? errorData = data?.data;
+    if (errorData == null) {
+      return;
+    }
+
+    final String errorText = (errorData['renderedErrorText'] as String?)
+        ?? (errorData['description'] as String?)
+        // We should never not error text, but if we do at least send something
+        // so it's not just completely silent.
+        ?? 'Unknown error in Flutter.Error event';
+    sendOutput('stderr', '$errorText\n');
   }
 
   /// Called by [launchRequest] to request that we actually start the app to be run/debugged.
@@ -171,61 +254,60 @@ class FlutterDebugAdapter extends DartDebugAdapter<FlutterLaunchRequestArguments
   Future<void> launchImpl() async {
     final FlutterLaunchRequestArguments args = this.args as FlutterLaunchRequestArguments;
 
-    // "debug"/"noDebug" refers to the DAP "debug" mode and not the Flutter
-    // debug mode (vs Profile/Release). It is possible for the user to "Run"
-    // from VS Code (eg. not want to hit breakpoints/etc.) but still be running
-    // a debug build.
-    final bool debug = !(args.noDebug ?? false);
-    final String? program = args.program;
-
     final List<String> toolArgs = <String>[
       'run',
       '--machine',
-      if (debug) '--start-paused',
+      if (enableDebugger) '--start-paused',
+      // Structured errors are enabled by default, but since we don't connect
+      // the VM Service for noDebug, we need to disable them so that error text
+      // is sent to stderr. Otherwise the user will not see any exception text
+      // (because nobody is listening for Flutter.Error events).
+      if (!enableDebugger)
+        '--dart-define=flutter.inspector.structuredErrors=false',
     ];
 
+    await _startProcess(
+      toolArgs: toolArgs,
+      customTool: args.customTool,
+      customToolReplacesArgs: args.customToolReplacesArgs,
+      targetProgram: args.program,
+      userToolArgs: args.toolArgs,
+      userArgs: args.args,
+    );
+  }
+
+  /// Starts the `flutter` process to run/attach to the required app.
+  Future<void> _startProcess({
+    required String? customTool,
+    required int? customToolReplacesArgs,
+    required List<String> toolArgs,
+    required List<String>? userToolArgs,
+    String? targetProgram,
+    List<String>? userArgs,
+  }) async {
     // Handle customTool and deletion of any arguments for it.
-    final String executable = args.customTool ?? fileSystem.path.join(Cache.flutterRoot!, 'bin', platform.isWindows ? 'flutter.bat' : 'flutter');
-    final int? removeArgs = args.customToolReplacesArgs;
-    if (args.customTool != null && removeArgs != null) {
+    final String executable = customTool ?? fileSystem.path.join(Cache.flutterRoot!, 'bin', platform.isWindows ? 'flutter.bat' : 'flutter');
+    final int? removeArgs = customToolReplacesArgs;
+    if (customTool != null && removeArgs != null) {
       toolArgs.removeRange(0, math.min(removeArgs, toolArgs.length));
     }
 
     final List<String> processArgs = <String>[
       ...toolArgs,
-      ...?args.toolArgs,
-      if (program != null) ...<String>[
+      ...?userToolArgs,
+      if (targetProgram != null) ...<String>[
         '--target',
-        program,
+        targetProgram,
       ],
-      ...?args.args,
+      ...?userArgs,
     ];
-
-    // Find the package_config file for this script. This is used by the
-    // debugger to map package: URIs to file paths to check whether they're in
-    // the editors workspace (args.cwd/args.additionalProjectPaths) so they can
-    // be correctly classes as "my code", "sdk" or "external packages".
-    // TODO(dantup): Remove this once https://github.com/dart-lang/sdk/issues/45530
-    // is done as it will not be necessary.
-    final String? possibleRoot = program == null
-        ? args.cwd
-        : fileSystem.path.isAbsolute(program)
-            ? fileSystem.path.dirname(program)
-            : fileSystem.path.dirname(
-                fileSystem.path.normalize(fileSystem.path.join(args.cwd ?? '', args.program)));
-    if (possibleRoot != null) {
-      final File? packageConfig = findPackageConfigFile(possibleRoot);
-      if (packageConfig != null) {
-        usePackageConfigFile(packageConfig);
-      }
-    }
 
     await launchAsProcess(executable, processArgs);
 
     // Delay responding until the app is launched and (optionally) the debugger
     // is connected.
     await appStartedCompleter.future;
-    if (debug) {
+    if (enableDebugger) {
       await debuggerInitialized;
     }
   }
@@ -330,9 +412,7 @@ class FlutterDebugAdapter extends DartDebugAdapter<FlutterLaunchRequestArguments
   void _handleDebugPort(Map<String, Object?> params) {
     // When running in noDebug mode, Flutter may still provide us a VM Service
     // URI, but we will not connect it because we don't want to do any debugging.
-    final FlutterLaunchRequestArguments args = this.args as FlutterLaunchRequestArguments;
-    final bool debug = !(args.noDebug ?? false);
-    if (!debug) {
+    if (!enableDebugger) {
       return;
     }
 
@@ -411,13 +491,13 @@ class FlutterDebugAdapter extends DartDebugAdapter<FlutterLaunchRequestArguments
     // general output printed by the user.
     final String outputCategory = _receivedAppStarted ? 'stdout' : 'console';
 
-      // Output in stdout can include both user output (eg. print) and Flutter
-      // daemon output. Since it's not uncommon for users to print JSON while
-      // debugging, we must try to detect which messages are likely Flutter
-      // messages as reliably as possible, as trying to process users output
-      // as a Flutter message may result in an unhandled error that will
-      // terminate the debug adater in a way that does not provide feedback
-      // because the standard crash violates the DAP protocol.
+    // Output in stdout can include both user output (eg. print) and Flutter
+    // daemon output. Since it's not uncommon for users to print JSON while
+    // debugging, we must try to detect which messages are likely Flutter
+    // messages as reliably as possible, as trying to process users output
+    // as a Flutter message may result in an unhandled error that will
+    // terminate the debug adater in a way that does not provide feedback
+    // because the standard crash violates the DAP protocol.
     Object? jsonData;
     try {
       jsonData = jsonDecode(data);
@@ -459,14 +539,11 @@ class FlutterDebugAdapter extends DartDebugAdapter<FlutterLaunchRequestArguments
     bool fullRestart, [
     String? reason,
   ]) async {
-    final DartCommonLaunchAttachRequestArguments args = this.args;
-    final bool debug =
-        args is! FlutterLaunchRequestArguments || args.noDebug != true;
     try {
       await sendFlutterRequest('app.restart', <String, Object?>{
         'appId': _appId,
         'fullRestart': fullRestart,
-        'pause': debug,
+        'pause': enableDebugger,
         'reason': reason,
         'debounce': true,
       });

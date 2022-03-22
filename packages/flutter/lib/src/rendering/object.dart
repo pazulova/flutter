@@ -1114,6 +1114,8 @@ class PipelineOwner {
 /// The [RenderObject] class hierarchy is the core of the rendering
 /// library's reason for being.
 ///
+/// {@youtube 560 315 https://www.youtube.com/watch?v=zmbmrw07qBc}
+///
 /// [RenderObject]s have a [parent], and have a slot called [parentData] in
 /// which the parent [RenderObject] can store child-specific data, for example,
 /// the child position. The [RenderObject] class also implements the basic
@@ -2717,7 +2719,7 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
     // RenderObject are still up-to date. Therefore, we will later only rebuild
     // the semantics subtree starting at the identified semantics boundary.
 
-    final bool wasSemanticsBoundary = _semantics != null && _cachedSemanticsConfiguration?.isSemanticBoundary == true;
+    final bool wasSemanticsBoundary = _semantics != null && (_cachedSemanticsConfiguration?.isSemanticBoundary ?? false);
     _cachedSemanticsConfiguration = null;
     bool isEffectiveSemanticsBoundary = _semanticsConfiguration.isSemanticBoundary && wasSemanticsBoundary;
     RenderObject node = this;
@@ -3019,7 +3021,7 @@ abstract class RenderObject extends AbstractNode with DiagnosticableTreeMixin im
     super.debugFillProperties(properties);
     properties.add(FlagProperty('needsCompositing', value: _needsCompositing, ifTrue: 'needs compositing'));
     properties.add(DiagnosticsProperty<Object?>('creator', debugCreator, defaultValue: null, level: DiagnosticLevel.debug));
-    properties.add(DiagnosticsProperty<ParentData>('parentData', parentData, tooltip: _debugCanParentUseSize == true ? 'can use size' : null, missingIfNull: true));
+    properties.add(DiagnosticsProperty<ParentData>('parentData', parentData, tooltip: (_debugCanParentUseSize ?? false) ? 'can use size' : null, missingIfNull: true));
     properties.add(DiagnosticsProperty<Constraints>('constraints', _constraints, missingIfNull: true));
     // don't access it via the "layer" getter since that's only valid when we don't need paint
     properties.add(DiagnosticsProperty<ContainerLayer>('layer', _layerHandle.layer, defaultValue: null));
@@ -3298,8 +3300,8 @@ mixin ContainerRenderObjectMixin<ChildType extends RenderObject, ParentDataType 
       // insert at the start (_firstChild)
       childParentData.nextSibling = _firstChild;
       if (_firstChild != null) {
-        final ParentDataType _firstChildParentData = _firstChild!.parentData! as ParentDataType;
-        _firstChildParentData.previousSibling = child;
+        final ParentDataType firstChildParentData = _firstChild!.parentData! as ParentDataType;
+        firstChildParentData.previousSibling = child;
       }
       _firstChild = child;
       _lastChild ??= child;
@@ -3529,12 +3531,12 @@ mixin RelayoutWhenSystemFontsChangeMixin on RenderObject {
   @override
   void attach(covariant PipelineOwner owner) {
     super.attach(owner);
-    PaintingBinding.instance!.systemFonts.addListener(systemFontsDidChange);
+    PaintingBinding.instance.systemFonts.addListener(systemFontsDidChange);
   }
 
   @override
   void detach() {
-    PaintingBinding.instance!.systemFonts.removeListener(systemFontsDidChange);
+    PaintingBinding.instance.systemFonts.removeListener(systemFontsDidChange);
     super.detach();
   }
 }
@@ -3802,7 +3804,7 @@ class _SwitchableSemanticsFragment extends _InterestingSemanticsFragment {
         ? _SemanticsGeometry(parentSemanticsClipRect: parentSemanticsClipRect, parentPaintClipRect: parentPaintClipRect, ancestors: _ancestorChain)
         : null;
 
-    if (!_mergeIntoParent && (geometry?.dropFromTree == true))
+    if (!_mergeIntoParent && (geometry?.dropFromTree ?? false))
       return;  // Drop the node, it's not going to be visible.
 
     owner._semantics ??= SemanticsNode(showOnScreen: owner.showOnScreen);

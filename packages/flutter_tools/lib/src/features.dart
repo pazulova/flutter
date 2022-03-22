@@ -79,10 +79,6 @@ const Feature flutterWebFeature = Feature(
     available: true,
     enabledByDefault: true,
   ),
-  dev: FeatureChannelSetting(
-    available: true,
-    enabledByDefault: true,
-  ),
   beta: FeatureChannelSetting(
     available: true,
     enabledByDefault: true,
@@ -102,9 +98,6 @@ const Feature flutterMacOSDesktopFeature = Feature(
   master: FeatureChannelSetting(
     available: true,
   ),
-  dev: FeatureChannelSetting(
-    available: true,
-  ),
   beta: FeatureChannelSetting(
     available: true,
   ),
@@ -122,9 +115,6 @@ const Feature flutterLinuxDesktopFeature = Feature(
   master: FeatureChannelSetting(
     available: true,
   ),
-  dev: FeatureChannelSetting(
-    available: true,
-  ),
   beta: FeatureChannelSetting(
     available: true,
   ),
@@ -135,16 +125,19 @@ const Feature flutterLinuxDesktopFeature = Feature(
 
 /// The [Feature] for Windows desktop.
 const Feature flutterWindowsDesktopFeature = Feature(
-  name: 'beta-quality support for desktop on Windows',
+  name: 'support for desktop on Windows',
   configSetting: 'enable-windows-desktop',
   environmentOverride: 'FLUTTER_WINDOWS',
   master: FeatureChannelSetting(
     available: true,
     enabledByDefault: true,
+<<<<<<< HEAD
   ),
   dev: FeatureChannelSetting(
     available: true,
     enabledByDefault: true,
+=======
+>>>>>>> 2015143fbf80a1fefd3a222f1d6a264b4d68003d
   ),
   beta: FeatureChannelSetting(
     available: true,
@@ -164,10 +157,6 @@ const Feature flutterAndroidFeature = Feature(
     available: true,
     enabledByDefault: true,
   ),
-  dev: FeatureChannelSetting(
-    available: true,
-    enabledByDefault: true,
-  ),
   beta: FeatureChannelSetting(
     available: true,
     enabledByDefault: true,
@@ -184,10 +173,6 @@ const Feature flutterIOSFeature = Feature(
   name: 'Flutter for iOS',
   configSetting: 'enable-ios',
   master: FeatureChannelSetting(
-    available: true,
-    enabledByDefault: true,
-  ),
-  dev: FeatureChannelSetting(
     available: true,
     enabledByDefault: true,
   ),
@@ -218,9 +203,6 @@ const Feature flutterCustomDevicesFeature = Feature(
   master: FeatureChannelSetting(
     available: true,
   ),
-  dev: FeatureChannelSetting(
-    available: true,
-  )
 );
 
 /// The fast hot reload feature for https://github.com/flutter/flutter/issues/61407.
@@ -232,9 +214,6 @@ const Feature singleWidgetReload = Feature(
     available: true,
     enabledByDefault: true,
   ),
-  dev: FeatureChannelSetting(
-    available: true,
-  ),
   beta: FeatureChannelSetting(
     available: true,
   ),
@@ -245,9 +224,6 @@ const Feature windowsUwpEmbedding = Feature(
   name: 'Flutter for Windows UWP',
   configSetting: 'enable-windows-uwp-desktop',
   master: FeatureChannelSetting(
-    available: true,
-  ),
-  dev: FeatureChannelSetting(
     available: true,
   ),
 );
@@ -268,7 +244,6 @@ class Feature {
     this.configSetting,
     this.extraHelpText,
     this.master = const FeatureChannelSetting(),
-    this.dev = const FeatureChannelSetting(),
     this.beta = const FeatureChannelSetting(),
     this.stable = const FeatureChannelSetting()
   });
@@ -278,9 +253,6 @@ class Feature {
 
   /// The settings for the master branch and other unknown channels.
   final FeatureChannelSetting master;
-
-  /// The settings for the dev branch.
-  final FeatureChannelSetting dev;
 
   /// The settings for the beta branch.
   final FeatureChannelSetting beta;
@@ -316,7 +288,6 @@ class Feature {
         'This setting will take effect on ');
     final List<String> channels = <String>[
       if (master.available) 'master',
-      if (dev.available) 'dev',
       if (beta.available) 'beta',
       if (stable.available) 'stable',
     ];
@@ -342,8 +313,6 @@ class Feature {
         return stable;
       case 'beta':
         return beta;
-      case 'dev':
-        return dev;
       case 'master':
       default:
         return master;
