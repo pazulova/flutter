@@ -476,6 +476,7 @@ class Cache {
     return overrideUrl;
   }
 
+<<<<<<< HEAD
   /// The base for URLs that store Flutter engine artifacts in CIPD.
   ///
   /// For some platforms, such as Web and Fuchsia, CIPD artifacts are fetched
@@ -495,6 +496,8 @@ class Cache {
   ///  * https://chromium.googlesource.com/infra/luci/luci-go/+/refs/heads/main/cipd,
   ///    which contains information about CIPD.
   ///  * [Cache] class-level dartdocs that explain how artifact mirrors work.
+=======
+>>>>>>> 77d935af4db863f6abd0b9c31c7e6df2a13de57b
   String get cipdBaseUrl {
     final String? overrideUrl = _platform.environment['FLUTTER_STORAGE_BASE_URL'];
     if (overrideUrl == null) {

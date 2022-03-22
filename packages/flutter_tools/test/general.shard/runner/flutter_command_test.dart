@@ -586,6 +586,7 @@ void main() {
     }, overrides: <Type, Generator>{
       FileSystem: () => fileSystem,
       ProcessManager: () => processManager,
+<<<<<<< HEAD
     });
 
     testUsingContext('includes assumeInitializeFromDillUpToDate in BuildInfo', () async {
@@ -608,6 +609,8 @@ void main() {
     }, overrides: <Type, Generator>{
       FileSystem: () => fileSystem,
       ProcessManager: () => processManager,
+=======
+>>>>>>> 77d935af4db863f6abd0b9c31c7e6df2a13de57b
     });
 
     testUsingContext('dds options', () async {
